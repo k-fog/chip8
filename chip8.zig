@@ -50,6 +50,13 @@ const Chip8 = struct {
 
     display_updated: bool = false,
 
+    const Res = enum {
+        Next,
+        Skip,
+        Jump,
+        var jump_addr: u16 = START_ADDR;
+    };
+
     pub fn new() Chip8 {
         var chip8 = Chip8{
             .pc = START_ADDR,
@@ -104,124 +111,127 @@ const Chip8 = struct {
 
     fn fetch(self: *Chip8) u16 {
         const op: u16 = @as(u16, self.ram[self.pc]) << 8 | self.ram[self.pc + 1];
-        self.pc += 2;
         return op;
     }
 
     // ===== instructions =====
-    fn cls(self: *Chip8) void {
+    fn cls(self: *Chip8) Res {
         for (0..SCREEN_SIZE) |i| {
             self.screen[i] = false;
         }
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn return_from_subroutine(self: *Chip8) void {
+    fn return_from_subroutine(self: *Chip8) Res {
         self.pc = self.pop();
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn jump(self: *Chip8, nnn: u16) void {
-        self.pc = nnn;
+    fn jump(self: *Chip8, nnn: u16) Res {
+        _ = self;
+        Res.jump_addr = nnn;
+        return Res.Jump;
     }
 
-    fn call_subroutine(self: *Chip8, nnn: u16) void {
+    fn call_subroutine(self: *Chip8, nnn: u16) Res {
         self.push(self.pc);
-        self.pc = nnn;
+        Res.jump_addr = nnn;
+        return Res.Jump;
     }
 
-    fn skip_if_vx_eq_kk(self: *Chip8, x: u8, kk: u8) void {
-        self.pc += if (self.v[x] == kk) 4 else 2;
+    fn skip_if_vx_eq_kk(self: *Chip8, x: u8, kk: u8) Res {
+        return if (self.v[x] == kk) Res.Skip else Res.Next;
     }
 
-    fn skip_if_vx_neq_kk(self: *Chip8, x: u8, kk: u8) void {
-        self.pc += if (self.v[x] != kk) 4 else 2;
+    fn skip_if_vx_neq_kk(self: *Chip8, x: u8, kk: u8) Res {
+        return if (self.v[x] != kk) Res.Skip else Res.Next;
     }
 
-    fn skip_if_vx_eq_vy(self: *Chip8, x: u8, y: u8) void {
-        self.pc += if (self.v[x] == self.v[y]) 4 else 2;
+    fn skip_if_vx_eq_vy(self: *Chip8, x: u8, y: u8) Res {
+        return if (self.v[x] == self.v[y]) Res.Skip else Res.Next;
     }
 
-    fn load_vx_kk(self: *Chip8, x: u8, kk: u8) void {
+    fn load_vx_kk(self: *Chip8, x: u8, kk: u8) Res {
         self.v[x] = kk;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn add_kk_to_vx(self: *Chip8, x: u8, kk: u8) void {
+    fn add_kk_to_vx(self: *Chip8, x: u8, kk: u8) Res {
         self.v[x] +%= kk;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn load_vx_vy(self: *Chip8, x: u8, y: u8) void {
+    fn load_vx_vy(self: *Chip8, x: u8, y: u8) Res {
         self.v[x] = self.v[y];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn or_vx_vy(self: *Chip8, x: u8, y: u8) void {
+    fn or_vx_vy(self: *Chip8, x: u8, y: u8) Res {
         self.v[x] |= self.v[y];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn and_vx_vy(self: *Chip8, x: u8, y: u8) void {
+    fn and_vx_vy(self: *Chip8, x: u8, y: u8) Res {
         self.v[x] &= self.v[y];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn xor_vx_vy(self: *Chip8, x: u8, y: u8) void {
+    fn xor_vx_vy(self: *Chip8, x: u8, y: u8) Res {
         self.v[x] ^= self.v[y];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn add_vx_vy(self: *Chip8, x: u8, y: u8) void {
+    fn add_vx_vy(self: *Chip8, x: u8, y: u8) Res {
         const sum: u16 = @as(u16, self.v[x]) +% @as(u16, self.v[y]);
         self.v[0xF] = if (255 < sum) 1 else 0;
         self.v[x] = @intCast(sum & 0xFF);
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn sub_vx_vy(self: *Chip8, x: u8, y: u8) void {
+    fn sub_vx_vy(self: *Chip8, x: u8, y: u8) Res {
         self.v[0xF] = if (self.v[y] < self.v[x]) 1 else 0;
         self.v[x] -%= self.v[y];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn shr_vx(self: *Chip8, x: u8) void {
+    fn shr_vx(self: *Chip8, x: u8) Res {
         self.v[0xF] = self.v[x] & 0x1;
         self.v[x] >>= 1;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn subn_vx_vy(self: *Chip8, x: u8, y: u8) void {
+    fn subn_vx_vy(self: *Chip8, x: u8, y: u8) Res {
         self.v[0xF] = if (self.v[x] < self.v[y]) 1 else 0;
         self.v[x] = self.v[y] -% self.v[x];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn shl_vx(self: *Chip8, x: u8) void {
+    fn shl_vx(self: *Chip8, x: u8) Res {
         self.v[0xF] = self.v[x] >> 7;
         self.v[x] <<= 1;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn skip_if_vx_neq_vy(self: *Chip8, x: u8, y: u8) void {
-        self.pc += if (self.v[x] != self.v[y]) 4 else 2;
+    fn skip_if_vx_neq_vy(self: *Chip8, x: u8, y: u8) Res {
+        return if (self.v[x] != self.v[y]) Res.Skip else Res.Next;
     }
 
-    fn load_i(self: *Chip8, nnn: u16) void {
+    fn load_i(self: *Chip8, nnn: u16) Res {
         self.i = nnn;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn jump_v0(self: *Chip8, nnn: u16) void {
-        self.pc = nnn + @as(u16, self.v[0]);
+    fn jump_v0(self: *Chip8, nnn: u16) Res {
+        Res.jump_addr = nnn + @as(u16, self.v[0]);
+        return Res.Jump;
     }
 
-    fn rnd(self: *Chip8, x: u8, kk: u8) void {
+    fn rnd(self: *Chip8, x: u8, kk: u8) Res {
         self.v[x] = rand.int(u8) & kk;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn draw(self: *Chip8, x: u8, y: u8, n: u8) void {
+    fn draw(self: *Chip8, x: u8, y: u8, n: u8) Res {
         const x_coord = @as(u16, self.v[x]);
         const y_coord = @as(u16, self.v[y]);
         var flipped = false;
@@ -240,74 +250,75 @@ const Chip8 = struct {
             }
         }
         self.v[0xF] = if (flipped) 1 else 0;
-        self.pc += 2;
+        self.display_updated = true;
+        return Res.Next;
     }
 
-    fn skip_if_key_pressed(self: *Chip8, x: u8) void {
+    fn skip_if_key_pressed(self: *Chip8, x: u8) Res {
         const vx = self.v[x];
-        self.pc += if (self.keys[vx] == true) 4 else 2;
+        return if (self.keys[vx] == true) Res.Skip else Res.Next;
     }
 
-    fn skip_if_key_not_pressed(self: *Chip8, x: u8) void {
+    fn skip_if_key_not_pressed(self: *Chip8, x: u8) Res {
         const vx = self.v[x];
-        std.debug.print("key: {}\n", .{vx});
-        self.pc += if (self.keys[vx] == false) 4 else 2;
+        return if (self.keys[vx] == false) Res.Skip else Res.Next;
     }
 
-    fn load_vx_dt(self: *Chip8, x: u8) void {
+    fn load_vx_dt(self: *Chip8, x: u8) Res {
         self.v[x] = self.dt;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn load_vx_key(self: *Chip8, x: u8) void {
+    fn load_vx_key(self: *Chip8, x: u8) Res {
         for (0..NUM_KEYS) |i| {
             if (self.keys[i] == true) {
                 self.v[x] = @intCast(i);
-                self.pc += 2;
-                return;
+                return Res.Next;
             }
         }
+        Res.jump_addr = self.pc;
+        return Res.Jump;
     }
 
-    fn load_dt_vx(self: *Chip8, x: u8) void {
+    fn load_dt_vx(self: *Chip8, x: u8) Res {
         self.dt = self.v[x];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn load_st_vx(self: *Chip8, x: u8) void {
+    fn load_st_vx(self: *Chip8, x: u8) Res {
         self.st = self.v[x];
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn add_i_vx(self: *Chip8, x: u8) void {
+    fn add_i_vx(self: *Chip8, x: u8) Res {
         self.i += @as(u16, self.v[x]);
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn load_font_vx(self: *Chip8, x: u8) void {
+    fn load_font_vx(self: *Chip8, x: u8) Res {
         self.i = @as(u16, self.v[x]) * 5;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn store_bcd_vx(self: *Chip8, x: u8) void {
+    fn store_bcd_vx(self: *Chip8, x: u8) Res {
         self.ram[self.i] = self.v[x] / 100;
         self.ram[self.i + 1] = (self.v[x] / 10) % 10;
         self.ram[self.i + 2] = self.v[x] % 10;
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn store_regs(self: *Chip8, x: u8) void {
+    fn store_regs(self: *Chip8, x: u8) Res {
         for (0..x) |i| {
             self.ram[self.i + i] = self.v[i];
         }
-        self.pc += 2;
+        return Res.Next;
     }
 
-    fn load_regs(self: *Chip8, x: u8) void {
+    fn load_regs(self: *Chip8, x: u8) Res {
         for (0..x) |i| {
             self.v[i] = self.ram[self.i + i];
         }
-        self.pc += 2;
+        return Res.Next;
     }
 
     fn execute(self: *Chip8, op: u16) void {
@@ -317,13 +328,11 @@ const Chip8 = struct {
         const y: u8 = @intCast((op & 0x00F0) >> 4);
         const n: u8 = @intCast(op & 0x000F);
 
-        switch (op & 0xF000) {
-            0x0000 => {
-                switch (op) {
-                    0x00E0 => self.cls(),
-                    0x00EE => self.return_from_subroutine(),
-                    else => unreachable,
-                }
+        const res = switch (op & 0xF000) {
+            0x0000 => switch (op) {
+                0x00E0 => self.cls(),
+                0x00EE => self.return_from_subroutine(),
+                else => unreachable,
             },
             0x1000 => self.jump(nnn),
             0x2000 => self.call_subroutine(nnn),
@@ -332,47 +341,47 @@ const Chip8 = struct {
             0x5000 => self.skip_if_vx_eq_vy(x, y),
             0x6000 => self.load_vx_kk(x, kk),
             0x7000 => self.add_kk_to_vx(x, kk),
-            0x8000 => {
-                switch (op & 0x000F) {
-                    0x0000 => self.load_vx_vy(x, y),
-                    0x0001 => self.or_vx_vy(x, y),
-                    0x0002 => self.and_vx_vy(x, y),
-                    0x0003 => self.xor_vx_vy(x, y),
-                    0x0004 => self.add_vx_vy(x, y),
-                    0x0005 => self.sub_vx_vy(x, y),
-                    0x0006 => self.shr_vx(x),
-                    0x0007 => self.subn_vx_vy(x, y),
-                    0x000E => self.shl_vx(x),
-                    else => unreachable,
-                }
+            0x8000 => switch (op & 0x000F) {
+                0x0000 => self.load_vx_vy(x, y),
+                0x0001 => self.or_vx_vy(x, y),
+                0x0002 => self.and_vx_vy(x, y),
+                0x0003 => self.xor_vx_vy(x, y),
+                0x0004 => self.add_vx_vy(x, y),
+                0x0005 => self.sub_vx_vy(x, y),
+                0x0006 => self.shr_vx(x),
+                0x0007 => self.subn_vx_vy(x, y),
+                0x000E => self.shl_vx(x),
+                else => unreachable,
             },
             0x9000 => self.skip_if_vx_neq_vy(x, y),
             0xA000 => self.load_i(nnn),
             0xB000 => self.jump_v0(nnn),
             0xC000 => self.rnd(x, kk),
             0xD000 => self.draw(x, y, n),
-            0xE000 => {
-                switch (op & 0x00FF) {
-                    0x009E => self.skip_if_key_pressed(x),
-                    0x00A1 => self.skip_if_key_not_pressed(x),
-                    else => unreachable,
-                }
+            0xE000 => switch (op & 0x00FF) {
+                0x009E => self.skip_if_key_pressed(x),
+                0x00A1 => self.skip_if_key_not_pressed(x),
+                else => unreachable,
             },
-            0xF000 => {
-                switch (op & 0x00FF) {
-                    0x0007 => self.load_vx_dt(x),
-                    0x000A => self.load_vx_key(x),
-                    0x0015 => self.load_dt_vx(x),
-                    0x0018 => self.load_st_vx(x),
-                    0x001E => self.add_i_vx(x),
-                    0x0029 => self.load_font_vx(x),
-                    0x0033 => self.store_bcd_vx(x),
-                    0x0055 => self.store_regs(x),
-                    0x0065 => self.load_regs(x),
-                    else => unreachable,
-                }
+            0xF000 => switch (op & 0x00FF) {
+                0x0007 => self.load_vx_dt(x),
+                0x000A => self.load_vx_key(x),
+                0x0015 => self.load_dt_vx(x),
+                0x0018 => self.load_st_vx(x),
+                0x001E => self.add_i_vx(x),
+                0x0029 => self.load_font_vx(x),
+                0x0033 => self.store_bcd_vx(x),
+                0x0055 => self.store_regs(x),
+                0x0065 => self.load_regs(x),
+                else => unreachable,
             },
             else => unreachable,
+        };
+
+        switch (res) {
+            Res.Next => self.pc += 2,
+            Res.Skip => self.pc += 4,
+            Res.Jump => self.pc = Res.jump_addr,
         }
     }
 
@@ -388,6 +397,7 @@ const Chip8 = struct {
 
     pub fn tick(self: *Chip8) void {
         const op = self.fetch();
+        self.display_updated = false;
         self.execute(op);
     }
 
@@ -470,18 +480,19 @@ pub fn main() !void {
             }
         }
 
-        _ = c.SDL_RenderClear(renderer);
-
         chip8.tick();
-        for (0..SCREEN_HEIGHT) |y| {
-            for (0..SCREEN_WIDTH) |x| {
-                const pixel = chip8.screen[y * SCREEN_WIDTH + x];
-                pixel_buffer[(y * SCREEN_WIDTH) + x] = (@as(u32, 0xFFFFFF00) * @intFromBool(pixel)) | 0x000000FF;
+        if (chip8.display_updated) {
+            _ = c.SDL_RenderClear(renderer);
+            for (0..SCREEN_HEIGHT) |y| {
+                for (0..SCREEN_WIDTH) |x| {
+                    const pixel = chip8.screen[y * SCREEN_WIDTH + x];
+                    pixel_buffer[(y * SCREEN_WIDTH) + x] = (@as(u32, 0xFFFFFF00) * @intFromBool(pixel)) | 0x000000FF;
+                }
             }
+            _ = c.SDL_UpdateTexture(texture, null, @ptrCast(pixel_buffer), SCREEN_WIDTH * @sizeOf(u32));
+            _ = c.SDL_RenderCopy(renderer, texture, null, null);
+            c.SDL_RenderPresent(renderer);
         }
-        _ = c.SDL_UpdateTexture(texture, null, @ptrCast(pixel_buffer), SCREEN_WIDTH * @sizeOf(u32));
-        _ = c.SDL_RenderCopy(renderer, texture, null, null);
-        c.SDL_RenderPresent(renderer);
 
         c.SDL_Delay(17);
     }
