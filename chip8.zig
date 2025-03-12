@@ -99,13 +99,13 @@ const Chip8 = struct {
     }
 
     fn push(self: *Chip8, val: u16) void {
-        self.sp += 1;
         self.stack[self.sp] = val;
+        self.sp += 1;
     }
 
     fn pop(self: *Chip8) u16 {
-        const ret = self.stack[self.sp];
         self.sp -= 1;
+        const ret = self.stack[self.sp];
         return ret;
     }
 
@@ -119,12 +119,13 @@ const Chip8 = struct {
         for (0..SCREEN_SIZE) |i| {
             self.screen[i] = false;
         }
+        self.display_updated = true;
         return Res.Next;
     }
 
     fn return_from_subroutine(self: *Chip8) Res {
-        self.pc = self.pop();
-        return Res.Next;
+        Res.jump_addr = self.pop();
+        return Res.Jump;
     }
 
     fn jump(self: *Chip8, nnn: u16) Res {
@@ -182,7 +183,7 @@ const Chip8 = struct {
     }
 
     fn add_vx_vy(self: *Chip8, x: u8, y: u8) Res {
-        const sum: u16 = @as(u16, self.v[x]) +% @as(u16, self.v[y]);
+        const sum: u16 = @as(u16, self.v[x]) + @as(u16, self.v[y]);
         self.v[0xF] = if (255 < sum) 1 else 0;
         self.v[x] = @intCast(sum & 0xFF);
         return Res.Next;
@@ -240,7 +241,7 @@ const Chip8 = struct {
             const pixels = self.ram[addr];
             for (0..8) |x_line| {
                 const shift_amt: u3 = @truncate(x_line);
-                if (pixels & (@as(u8, 0b1000_0000) >> shift_amt) != 0) {
+                if ((pixels & (@as(u8, 0b1000_0000) >> shift_amt)) != 0) {
                     const xx = (x_coord + x_line) % SCREEN_WIDTH;
                     const yy = (y_coord + y_line) % SCREEN_HEIGHT;
                     const index = yy * SCREEN_WIDTH + xx;
@@ -276,8 +277,8 @@ const Chip8 = struct {
                 return Res.Next;
             }
         }
-        self.pc -= 2;
-        return Res.Next;
+        Res.jump_addr = self.pc;
+        return Res.Jump;
     }
 
     fn load_dt_vx(self: *Chip8, x: u8) Res {
@@ -308,15 +309,17 @@ const Chip8 = struct {
     }
 
     fn store_regs(self: *Chip8, x: u8) Res {
-        for (0..x) |i| {
-            self.ram[self.i + i] = self.v[i];
+        var idx: usize = 0;
+        while (idx <= x) : (idx += 1) {
+            self.ram[self.i + idx] = self.v[idx];
         }
         return Res.Next;
     }
 
     fn load_regs(self: *Chip8, x: u8) Res {
-        for (0..x) |i| {
-            self.v[i] = self.ram[self.i + i];
+        var idx: usize = 0;
+        while (idx <= x) : (idx += 1) {
+            self.v[idx] = self.ram[self.i + idx];
         }
         return Res.Next;
     }
@@ -399,20 +402,6 @@ const Chip8 = struct {
         const op = self.fetch();
         self.display_updated = false;
         self.execute(op);
-    }
-
-    pub fn display(self: *Chip8) void {
-        for (0..SCREEN_HEIGHT) |y| {
-            for (0..SCREEN_WIDTH) |x| {
-                const index = y * SCREEN_WIDTH + x;
-                if (self.screen[index] == true) {
-                    std.debug.print("#", .{});
-                } else {
-                    std.debug.print(" ", .{});
-                }
-            }
-            std.debug.print("\n", .{});
-        }
     }
 };
 
