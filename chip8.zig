@@ -276,8 +276,8 @@ const Chip8 = struct {
                 return Res.Next;
             }
         }
-        Res.jump_addr = self.pc;
-        return Res.Jump;
+        self.pc -= 2;
+        return Res.Next;
     }
 
     fn load_dt_vx(self: *Chip8, x: u8) Res {
