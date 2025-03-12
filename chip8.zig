@@ -416,6 +416,25 @@ const Chip8 = struct {
     }
 };
 
+const KEYMAP = [_]c.SDL_Keycode{
+    c.SDLK_x, // 0
+    c.SDLK_1, // 1
+    c.SDLK_2, // 2
+    c.SDLK_3, // 3
+    c.SDLK_q, // 4
+    c.SDLK_w, // 5
+    c.SDLK_e, // 6
+    c.SDLK_a, // 7
+    c.SDLK_s, // 8
+    c.SDLK_d, // 9
+    c.SDLK_z, // A
+    c.SDLK_c, // B
+    c.SDLK_4, // C
+    c.SDLK_r, // D
+    c.SDLK_f, // E
+    c.SDLK_v, // F
+};
+
 pub fn main() !void {
     var prng = std.Random.DefaultPrng.init(@intCast(time.milliTimestamp()));
     rand = prng.random();
@@ -473,6 +492,23 @@ pub fn main() !void {
         var event: c.SDL_Event = undefined;
         while (c.SDL_PollEvent(&event) != 0) {
             switch (event.type) {
+                c.SDL_KEYDOWN => {
+                    for (0..NUM_KEYS) |i| {
+                        if (event.key.keysym.sym == KEYMAP[i]) {
+                            chip8.keys[i] = true;
+                        }
+                    }
+                    if (event.key.keysym.sym == c.SDLK_ESCAPE) {
+                        quit = true;
+                    }
+                },
+                c.SDL_KEYUP => {
+                    for (0..NUM_KEYS) |i| {
+                        if (event.key.keysym.sym == KEYMAP[i]) {
+                            chip8.keys[i] = false;
+                        }
+                    }
+                },
                 c.SDL_QUIT => {
                     quit = true;
                 },
