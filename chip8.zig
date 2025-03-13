@@ -309,18 +309,18 @@ const Chip8 = struct {
     }
 
     fn store_regs(self: *Chip8, x: u8) Res {
-        var idx: usize = 0;
-        while (idx <= x) : (idx += 1) {
+        for (0..(x + 1)) |idx| {
             self.ram[self.i + idx] = self.v[idx];
         }
+        self.i += x + 1;
         return Res.Next;
     }
 
     fn load_regs(self: *Chip8, x: u8) Res {
-        var idx: usize = 0;
-        while (idx <= x) : (idx += 1) {
+        for (0..(x + 1)) |idx| {
             self.v[idx] = self.ram[self.i + idx];
         }
+        self.i += x + 1;
         return Res.Next;
     }
 
@@ -453,7 +453,7 @@ pub fn main() !void {
     }
     defer c.SDL_Quit();
 
-    const screen = c.SDL_CreateWindow("Chip8", c.SDL_WINDOWPOS_UNDEFINED, c.SDL_WINDOWPOS_UNDEFINED, 10 * SCREEN_WIDTH, 10 * SCREEN_HEIGHT, c.SDL_WINDOW_OPENGL) orelse
+    const screen = c.SDL_CreateWindow("Chip8", c.SDL_WINDOWPOS_UNDEFINED, c.SDL_WINDOWPOS_UNDEFINED, 20 * SCREEN_WIDTH, 20 * SCREEN_HEIGHT, c.SDL_WINDOW_OPENGL) orelse
         {
             c.SDL_Log("Unable to create window: %s", c.SDL_GetError());
             return error.SDLInitializationFailed;
