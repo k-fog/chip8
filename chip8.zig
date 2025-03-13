@@ -401,6 +401,7 @@ const Chip8 = struct {
     pub fn tick(self: *Chip8) void {
         const op = self.fetch();
         self.display_updated = false;
+        self.tick_timers();
         self.execute(op);
     }
 };
@@ -517,8 +518,7 @@ pub fn main() !void {
             _ = c.SDL_UpdateTexture(texture, null, @ptrCast(pixel_buffer), SCREEN_WIDTH * @sizeOf(u32));
             _ = c.SDL_RenderCopy(renderer, texture, null, null);
             c.SDL_RenderPresent(renderer);
+            c.SDL_Delay(17);
         }
-
-        c.SDL_Delay(17);
     }
 }
