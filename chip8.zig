@@ -35,6 +35,7 @@ const FONTSET: [FONTSET_SIZE]u8 = .{
     0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 };
+const TICKS_PER_FRAME: u32 = 10;
 
 const Chip8 = struct {
     pc: u16,
@@ -48,13 +49,10 @@ const Chip8 = struct {
     dt: u8,
     st: u8,
 
-    display_updated: bool = false,
-
     const Res = enum {
         Next,
         Skip,
         Jump,
-        var jump_addr: u16 = START_ADDR;
     };
 
     pub fn new() Chip8 {
@@ -119,24 +117,22 @@ const Chip8 = struct {
         for (0..SCREEN_SIZE) |i| {
             self.screen[i] = false;
         }
-        self.display_updated = true;
         return Res.Next;
     }
 
     fn return_from_subroutine(self: *Chip8) Res {
-        Res.jump_addr = self.pop();
+        self.pc = self.pop();
         return Res.Jump;
     }
 
     fn jump(self: *Chip8, nnn: u16) Res {
-        _ = self;
-        Res.jump_addr = nnn;
+        self.pc = nnn;
         return Res.Jump;
     }
 
     fn call_subroutine(self: *Chip8, nnn: u16) Res {
         self.push(self.pc);
-        Res.jump_addr = nnn;
+        self.pc = nnn;
         return Res.Jump;
     }
 
@@ -223,7 +219,7 @@ const Chip8 = struct {
     }
 
     fn jump_v0(self: *Chip8, nnn: u16) Res {
-        Res.jump_addr = nnn + @as(u16, self.v[0]);
+        self.pc = nnn + @as(u16, self.v[0]);
         return Res.Jump;
     }
 
@@ -251,7 +247,6 @@ const Chip8 = struct {
             }
         }
         self.v[0xF] = if (flipped) 1 else 0;
-        self.display_updated = true;
         return Res.Next;
     }
 
@@ -277,7 +272,6 @@ const Chip8 = struct {
                 return Res.Next;
             }
         }
-        Res.jump_addr = self.pc;
         return Res.Jump;
     }
 
@@ -292,7 +286,7 @@ const Chip8 = struct {
     }
 
     fn add_i_vx(self: *Chip8, x: u8) Res {
-        self.i += @as(u16, self.v[x]);
+        self.i +%= @as(u16, self.v[x]);
         return Res.Next;
     }
 
@@ -384,24 +378,17 @@ const Chip8 = struct {
         switch (res) {
             Res.Next => self.pc += 2,
             Res.Skip => self.pc += 4,
-            Res.Jump => self.pc = Res.jump_addr,
+            Res.Jump => {},
         }
     }
 
     fn tick_timers(self: *Chip8) void {
         if (self.dt > 0) self.dt -= 1;
-        if (self.st > 0) {
-            if (self.st == 1) {
-                // Beep
-            }
-            self.st -= 1;
-        }
+        if (self.st > 0) self.st -= 1;
     }
 
     pub fn tick(self: *Chip8) void {
         const op = self.fetch();
-        self.display_updated = false;
-        self.tick_timers();
         self.execute(op);
     }
 };
@@ -506,19 +493,21 @@ pub fn main() !void {
             }
         }
 
-        chip8.tick();
-        if (chip8.display_updated) {
-            _ = c.SDL_RenderClear(renderer);
-            for (0..SCREEN_HEIGHT) |y| {
-                for (0..SCREEN_WIDTH) |x| {
-                    const pixel = chip8.screen[y * SCREEN_WIDTH + x];
-                    pixel_buffer[(y * SCREEN_WIDTH) + x] = (@as(u32, 0xFFFFFF00) * @intFromBool(pixel)) | 0x000000FF;
-                }
-            }
-            _ = c.SDL_UpdateTexture(texture, null, @ptrCast(pixel_buffer), SCREEN_WIDTH * @sizeOf(u32));
-            _ = c.SDL_RenderCopy(renderer, texture, null, null);
-            c.SDL_RenderPresent(renderer);
-            c.SDL_Delay(17);
+        for (0..TICKS_PER_FRAME) |_| {
+            chip8.tick();
         }
+        chip8.tick_timers();
+
+        _ = c.SDL_RenderClear(renderer);
+        for (0..SCREEN_HEIGHT) |y| {
+            for (0..SCREEN_WIDTH) |x| {
+                const pixel = chip8.screen[y * SCREEN_WIDTH + x];
+                pixel_buffer[(y * SCREEN_WIDTH) + x] = (@as(u32, 0xFFFFFF00) * @intFromBool(pixel)) | 0x000000FF;
+            }
+        }
+        _ = c.SDL_UpdateTexture(texture, null, @ptrCast(pixel_buffer), SCREEN_WIDTH * @sizeOf(u32));
+        _ = c.SDL_RenderCopy(renderer, texture, null, null);
+        c.SDL_RenderPresent(renderer);
+        c.SDL_Delay(17);
     }
 }
