@@ -8,6 +8,7 @@ const File = fs.File;
 const allocator = std.heap.page_allocator;
 var rand: std.Random = undefined;
 
+const DEBUG = false;
 const RAM_SIZE: usize = 4096;
 const SCREEN_WIDTH: usize = 64;
 const SCREEN_HEIGHT: usize = 32;
@@ -114,6 +115,9 @@ const Chip8 = struct {
 
     // ===== instructions =====
     fn cls(self: *Chip8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: CLS\n", .{self.pc});
+        }
         for (0..SCREEN_SIZE) |i| {
             self.screen[i] = false;
         }
@@ -121,64 +125,103 @@ const Chip8 = struct {
     }
 
     fn return_from_subroutine(self: *Chip8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: RET\n", .{self.pc});
+        }
         self.pc = self.pop();
-        return Res.Jump;
+        return Res.Next;
     }
 
     fn jump(self: *Chip8, nnn: u16) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: JMP {x}\n", .{ self.pc, nnn });
+        }
         self.pc = nnn;
         return Res.Jump;
     }
 
     fn call_subroutine(self: *Chip8, nnn: u16) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: CALL {x}\n", .{ self.pc, nnn });
+        }
         self.push(self.pc);
         self.pc = nnn;
         return Res.Jump;
     }
 
     fn skip_if_vx_eq_kk(self: *Chip8, x: u8, kk: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SE V{x}, {x}\n", .{ self.pc, x, kk });
+        }
         return if (self.v[x] == kk) Res.Skip else Res.Next;
     }
 
     fn skip_if_vx_neq_kk(self: *Chip8, x: u8, kk: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SNE V{x}, {x}\n", .{ self.pc, x, kk });
+        }
         return if (self.v[x] != kk) Res.Skip else Res.Next;
     }
 
     fn skip_if_vx_eq_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SE V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         return if (self.v[x] == self.v[y]) Res.Skip else Res.Next;
     }
 
     fn load_vx_kk(self: *Chip8, x: u8, kk: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD V{x}, {x}\n", .{ self.pc, x, kk });
+        }
         self.v[x] = kk;
         return Res.Next;
     }
 
     fn add_kk_to_vx(self: *Chip8, x: u8, kk: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: ADD V{x}, {x}\n", .{ self.pc, x, kk });
+        }
         self.v[x] +%= kk;
         return Res.Next;
     }
 
     fn load_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         self.v[x] = self.v[y];
         return Res.Next;
     }
 
     fn or_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: OR V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         self.v[x] |= self.v[y];
         return Res.Next;
     }
 
     fn and_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: AND V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         self.v[x] &= self.v[y];
         return Res.Next;
     }
 
     fn xor_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: XOR V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         self.v[x] ^= self.v[y];
         return Res.Next;
     }
 
     fn add_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: ADD V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         const sum: u16 = @as(u16, self.v[x]) + @as(u16, self.v[y]);
         self.v[0xF] = if (255 < sum) 1 else 0;
         self.v[x] = @intCast(sum & 0xFF);
@@ -186,49 +229,76 @@ const Chip8 = struct {
     }
 
     fn sub_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SUB V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         self.v[0xF] = if (self.v[y] < self.v[x]) 1 else 0;
         self.v[x] -%= self.v[y];
         return Res.Next;
     }
 
     fn shr_vx(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SHR V{x}\n", .{ self.pc, x });
+        }
         self.v[0xF] = self.v[x] & 0x1;
         self.v[x] >>= 1;
         return Res.Next;
     }
 
     fn subn_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SUBN V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         self.v[0xF] = if (self.v[x] < self.v[y]) 1 else 0;
         self.v[x] = self.v[y] -% self.v[x];
         return Res.Next;
     }
 
     fn shl_vx(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SHL V{x}\n", .{ self.pc, x });
+        }
         self.v[0xF] = self.v[x] >> 7;
         self.v[x] <<= 1;
         return Res.Next;
     }
 
     fn skip_if_vx_neq_vy(self: *Chip8, x: u8, y: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SNE V{x}, V{x}\n", .{ self.pc, x, y });
+        }
         return if (self.v[x] != self.v[y]) Res.Skip else Res.Next;
     }
 
     fn load_i(self: *Chip8, nnn: u16) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD I, {x}\n", .{ self.pc, nnn });
+        }
         self.i = nnn;
         return Res.Next;
     }
 
     fn jump_v0(self: *Chip8, nnn: u16) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: JP V0, {x}\n", .{ self.pc, nnn });
+        }
         self.pc = nnn + @as(u16, self.v[0]);
         return Res.Jump;
     }
 
     fn rnd(self: *Chip8, x: u8, kk: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: RND V{x}, {x}\n", .{ self.pc, x, kk });
+        }
         self.v[x] = rand.int(u8) & kk;
         return Res.Next;
     }
 
     fn draw(self: *Chip8, x: u8, y: u8, n: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: DRW V{x}, V{x}, {x}\n", .{ self.pc, x, y, n });
+        }
         const x_coord = @as(u16, self.v[x]);
         const y_coord = @as(u16, self.v[y]);
         var flipped = false;
@@ -251,21 +321,33 @@ const Chip8 = struct {
     }
 
     fn skip_if_key_pressed(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SKP V{x}\n", .{ self.pc, x });
+        }
         const vx = self.v[x];
         return if (self.keys[vx] == true) Res.Skip else Res.Next;
     }
 
     fn skip_if_key_not_pressed(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: SKNP V{x}\n", .{ self.pc, x });
+        }
         const vx = self.v[x];
         return if (self.keys[vx] == false) Res.Skip else Res.Next;
     }
 
     fn load_vx_dt(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD V{x}, DT\n", .{ self.pc, x });
+        }
         self.v[x] = self.dt;
         return Res.Next;
     }
 
     fn load_vx_key(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD V{x}, K\n", .{ self.pc, x });
+        }
         for (0..NUM_KEYS) |i| {
             if (self.keys[i] == true) {
                 self.v[x] = @intCast(i);
@@ -276,26 +358,41 @@ const Chip8 = struct {
     }
 
     fn load_dt_vx(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD DT, V{x}\n", .{ self.pc, x });
+        }
         self.dt = self.v[x];
         return Res.Next;
     }
 
     fn load_st_vx(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD ST, V{x}\n", .{ self.pc, x });
+        }
         self.st = self.v[x];
         return Res.Next;
     }
 
     fn add_i_vx(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: ADD I, V{x}\n", .{ self.pc, x });
+        }
         self.i +%= @as(u16, self.v[x]);
         return Res.Next;
     }
 
     fn load_font_vx(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD F, V{x}\n", .{ self.pc, x });
+        }
         self.i = @as(u16, self.v[x]) * 5;
         return Res.Next;
     }
 
     fn store_bcd_vx(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD B, V{x}\n", .{ self.pc, x });
+        }
         self.ram[self.i] = self.v[x] / 100;
         self.ram[self.i + 1] = (self.v[x] / 10) % 10;
         self.ram[self.i + 2] = self.v[x] % 10;
@@ -303,6 +400,9 @@ const Chip8 = struct {
     }
 
     fn store_regs(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD [I], V{x}\n", .{ self.pc, x });
+        }
         for (0..(x + 1)) |idx| {
             self.ram[self.i + idx] = self.v[idx];
         }
@@ -311,6 +411,9 @@ const Chip8 = struct {
     }
 
     fn load_regs(self: *Chip8, x: u8) Res {
+        if (DEBUG) {
+            std.debug.print("{x}: LD V{x}, [I]\n", .{ self.pc, x });
+        }
         for (0..(x + 1)) |idx| {
             self.v[idx] = self.ram[self.i + idx];
         }
@@ -379,6 +482,14 @@ const Chip8 = struct {
             Res.Next => self.pc += 2,
             Res.Skip => self.pc += 4,
             Res.Jump => {},
+        }
+
+        if (DEBUG) {
+            std.debug.print("PC: {x}, I: {x}, SP: {x}, OP: {x}, V: [", .{ self.pc, self.i, self.sp, op });
+            for (0..NUM_REGS) |i| {
+                std.debug.print("{x}, ", .{self.v[i]});
+            }
+            std.debug.print("]\n", .{});
         }
     }
 
