@@ -5,6 +5,7 @@ const std = @import("std");
 const time = std.time;
 const fs = std.fs;
 const File = fs.File;
+const math = std.math;
 const allocator = std.heap.page_allocator;
 var rand: std.Random = undefined;
 
@@ -37,6 +38,7 @@ const FONTSET: [FONTSET_SIZE]u8 = .{
     0xF0, 0x80, 0xF0, 0x80, 0x80, // F
 };
 const TICKS_PER_FRAME: u32 = 10;
+const AUDIO_FREQ: f64 = 440.0;
 
 const Chip8 = struct {
     pc: u16,
@@ -55,9 +57,10 @@ const Chip8 = struct {
         Skip,
         Jump,
     };
+    const Self = @This();
 
-    pub fn init() Chip8 {
-        var chip8 = Chip8{
+    pub fn init() Self {
+        var chip8 = Self{
             .pc = START_ADDR,
             .ram = [_]u8{0} ** RAM_SIZE,
             .screen = [_]bool{false} ** (SCREEN_SIZE),
@@ -75,30 +78,30 @@ const Chip8 = struct {
         return chip8;
     }
 
-    pub fn load(self: *Chip8, rom: []u8) void {
+    pub fn load(self: *Self, rom: []u8) void {
         for (0..rom.len) |i| {
             self.ram[START_ADDR + i] = rom[i];
         }
     }
 
-    fn push(self: *Chip8, val: u16) void {
+    fn push(self: *Self, val: u16) void {
         self.stack[self.sp] = val;
         self.sp += 1;
     }
 
-    fn pop(self: *Chip8) u16 {
+    fn pop(self: *Self) u16 {
         self.sp -= 1;
         const ret = self.stack[self.sp];
         return ret;
     }
 
-    fn fetch(self: *Chip8) u16 {
+    fn fetch(self: *Self) u16 {
         const op: u16 = @as(u16, self.ram[self.pc]) << 8 | self.ram[self.pc + 1];
         return op;
     }
 
     // ===== instructions =====
-    fn cls(self: *Chip8) Res {
+    fn cls(self: *Self) Res {
         if (DEBUG) {
             std.debug.print("{x}: CLS\n", .{self.pc});
         }
@@ -108,7 +111,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn return_from_subroutine(self: *Chip8) Res {
+    fn return_from_subroutine(self: *Self) Res {
         if (DEBUG) {
             std.debug.print("{x}: RET\n", .{self.pc});
         }
@@ -116,7 +119,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn jump(self: *Chip8, nnn: u16) Res {
+    fn jump(self: *Self, nnn: u16) Res {
         if (DEBUG) {
             std.debug.print("{x}: JMP {x}\n", .{ self.pc, nnn });
         }
@@ -124,7 +127,7 @@ const Chip8 = struct {
         return Res.Jump;
     }
 
-    fn call_subroutine(self: *Chip8, nnn: u16) Res {
+    fn call_subroutine(self: *Self, nnn: u16) Res {
         if (DEBUG) {
             std.debug.print("{x}: CALL {x}\n", .{ self.pc, nnn });
         }
@@ -133,28 +136,28 @@ const Chip8 = struct {
         return Res.Jump;
     }
 
-    fn skip_if_vx_eq_kk(self: *Chip8, x: u8, kk: u8) Res {
+    fn skip_if_vx_eq_kk(self: *Self, x: u8, kk: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SE V{x}, {x}\n", .{ self.pc, x, kk });
         }
         return if (self.v[x] == kk) Res.Skip else Res.Next;
     }
 
-    fn skip_if_vx_neq_kk(self: *Chip8, x: u8, kk: u8) Res {
+    fn skip_if_vx_neq_kk(self: *Self, x: u8, kk: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SNE V{x}, {x}\n", .{ self.pc, x, kk });
         }
         return if (self.v[x] != kk) Res.Skip else Res.Next;
     }
 
-    fn skip_if_vx_eq_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn skip_if_vx_eq_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SE V{x}, V{x}\n", .{ self.pc, x, y });
         }
         return if (self.v[x] == self.v[y]) Res.Skip else Res.Next;
     }
 
-    fn load_vx_kk(self: *Chip8, x: u8, kk: u8) Res {
+    fn load_vx_kk(self: *Self, x: u8, kk: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD V{x}, {x}\n", .{ self.pc, x, kk });
         }
@@ -162,7 +165,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn add_kk_to_vx(self: *Chip8, x: u8, kk: u8) Res {
+    fn add_kk_to_vx(self: *Self, x: u8, kk: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: ADD V{x}, {x}\n", .{ self.pc, x, kk });
         }
@@ -170,7 +173,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn load_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn load_vx_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD V{x}, V{x}\n", .{ self.pc, x, y });
         }
@@ -178,7 +181,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn or_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn or_vx_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: OR V{x}, V{x}\n", .{ self.pc, x, y });
         }
@@ -186,7 +189,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn and_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn and_vx_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: AND V{x}, V{x}\n", .{ self.pc, x, y });
         }
@@ -194,7 +197,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn xor_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn xor_vx_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: XOR V{x}, V{x}\n", .{ self.pc, x, y });
         }
@@ -202,7 +205,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn add_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn add_vx_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: ADD V{x}, V{x}\n", .{ self.pc, x, y });
         }
@@ -212,7 +215,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn sub_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn sub_vx_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SUB V{x}, V{x}\n", .{ self.pc, x, y });
         }
@@ -221,7 +224,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn shr_vx(self: *Chip8, x: u8) Res {
+    fn shr_vx(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SHR V{x}\n", .{ self.pc, x });
         }
@@ -230,7 +233,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn subn_vx_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn subn_vx_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SUBN V{x}, V{x}\n", .{ self.pc, x, y });
         }
@@ -239,7 +242,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn shl_vx(self: *Chip8, x: u8) Res {
+    fn shl_vx(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SHL V{x}\n", .{ self.pc, x });
         }
@@ -248,14 +251,14 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn skip_if_vx_neq_vy(self: *Chip8, x: u8, y: u8) Res {
+    fn skip_if_vx_neq_vy(self: *Self, x: u8, y: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SNE V{x}, V{x}\n", .{ self.pc, x, y });
         }
         return if (self.v[x] != self.v[y]) Res.Skip else Res.Next;
     }
 
-    fn load_i(self: *Chip8, nnn: u16) Res {
+    fn load_i(self: *Self, nnn: u16) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD I, {x}\n", .{ self.pc, nnn });
         }
@@ -263,7 +266,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn jump_v0(self: *Chip8, nnn: u16) Res {
+    fn jump_v0(self: *Self, nnn: u16) Res {
         if (DEBUG) {
             std.debug.print("{x}: JP V0, {x}\n", .{ self.pc, nnn });
         }
@@ -271,7 +274,7 @@ const Chip8 = struct {
         return Res.Jump;
     }
 
-    fn rnd(self: *Chip8, x: u8, kk: u8) Res {
+    fn rnd(self: *Self, x: u8, kk: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: RND V{x}, {x}\n", .{ self.pc, x, kk });
         }
@@ -279,7 +282,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn draw(self: *Chip8, x: u8, y: u8, n: u8) Res {
+    fn draw(self: *Self, x: u8, y: u8, n: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: DRW V{x}, V{x}, {x}\n", .{ self.pc, x, y, n });
         }
@@ -304,7 +307,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn skip_if_key_pressed(self: *Chip8, x: u8) Res {
+    fn skip_if_key_pressed(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SKP V{x}\n", .{ self.pc, x });
         }
@@ -312,7 +315,7 @@ const Chip8 = struct {
         return if (self.keys[vx] == true) Res.Skip else Res.Next;
     }
 
-    fn skip_if_key_not_pressed(self: *Chip8, x: u8) Res {
+    fn skip_if_key_not_pressed(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: SKNP V{x}\n", .{ self.pc, x });
         }
@@ -320,7 +323,7 @@ const Chip8 = struct {
         return if (self.keys[vx] == false) Res.Skip else Res.Next;
     }
 
-    fn load_vx_dt(self: *Chip8, x: u8) Res {
+    fn load_vx_dt(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD V{x}, DT\n", .{ self.pc, x });
         }
@@ -328,7 +331,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn load_vx_key(self: *Chip8, x: u8) Res {
+    fn load_vx_key(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD V{x}, K\n", .{ self.pc, x });
         }
@@ -341,7 +344,7 @@ const Chip8 = struct {
         return Res.Jump;
     }
 
-    fn load_dt_vx(self: *Chip8, x: u8) Res {
+    fn load_dt_vx(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD DT, V{x}\n", .{ self.pc, x });
         }
@@ -349,7 +352,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn load_st_vx(self: *Chip8, x: u8) Res {
+    fn load_st_vx(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD ST, V{x}\n", .{ self.pc, x });
         }
@@ -357,7 +360,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn add_i_vx(self: *Chip8, x: u8) Res {
+    fn add_i_vx(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: ADD I, V{x}\n", .{ self.pc, x });
         }
@@ -365,7 +368,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn load_font_vx(self: *Chip8, x: u8) Res {
+    fn load_font_vx(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD F, V{x}\n", .{ self.pc, x });
         }
@@ -373,7 +376,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn store_bcd_vx(self: *Chip8, x: u8) Res {
+    fn store_bcd_vx(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD B, V{x}\n", .{ self.pc, x });
         }
@@ -383,7 +386,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn store_regs(self: *Chip8, x: u8) Res {
+    fn store_regs(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD [I], V{x}\n", .{ self.pc, x });
         }
@@ -394,7 +397,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn load_regs(self: *Chip8, x: u8) Res {
+    fn load_regs(self: *Self, x: u8) Res {
         if (DEBUG) {
             std.debug.print("{x}: LD V{x}, [I]\n", .{ self.pc, x });
         }
@@ -405,7 +408,7 @@ const Chip8 = struct {
         return Res.Next;
     }
 
-    fn execute(self: *Chip8, op: u16) void {
+    fn execute(self: *Self, op: u16) void {
         const nnn: u16 = op & 0x0FFF;
         const kk: u8 = @intCast(op & 0x00FF);
         const x: u8 = @intCast((op & 0x0F00) >> 8);
@@ -477,12 +480,12 @@ const Chip8 = struct {
         }
     }
 
-    fn tick_timers(self: *Chip8) void {
+    fn tick_timers(self: *Self) void {
         if (self.dt > 0) self.dt -= 1;
         if (self.st > 0) self.st -= 1;
     }
 
-    pub fn tick(self: *Chip8) void {
+    pub fn tick(self: *Self) void {
         const op = self.fetch();
         self.execute(op);
     }
