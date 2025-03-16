@@ -45,7 +45,7 @@ const Chip8 = struct {
     v: [NUM_REGS]u8,
     i: u16,
     stack: [STACK_SIZE]u16,
-    sp: u16, // points to the top of the stack
+    sp: u16,
     keys: [NUM_KEYS]bool,
     dt: u8,
     st: u8,
@@ -56,7 +56,7 @@ const Chip8 = struct {
         Jump,
     };
 
-    pub fn new() Chip8 {
+    pub fn init() Chip8 {
         var chip8 = Chip8{
             .pc = START_ADDR,
             .ram = [_]u8{0} ** RAM_SIZE,
@@ -73,22 +73,6 @@ const Chip8 = struct {
             chip8.ram[i] = FONTSET[i];
         }
         return chip8;
-    }
-
-    pub fn reset(self: *Chip8) void {
-        self.pc = START_ADDR;
-        self.ram = [_]u8{0} ** RAM_SIZE;
-        self.screen = [_]bool{false} ** (SCREEN_SIZE);
-        self.v = [_]u8{0} ** NUM_REGS;
-        self.i = 0;
-        self.stack = [_]u16{0} ** STACK_SIZE;
-        self.sp = 0;
-        self.keys = [_]bool{false} ** NUM_KEYS;
-        self.dt = 0;
-        self.st = 0;
-        for (0..FONTSET_SIZE) |i| {
-            self.ram[i] = FONTSET[i];
-        }
     }
 
     pub fn load(self: *Chip8, rom: []u8) void {
@@ -527,6 +511,7 @@ pub fn main() !void {
     var prng = std.Random.DefaultPrng.init(@intCast(time.milliTimestamp()));
     rand = prng.random();
 
+    // Get the ROM file
     const args = std.process.argsAlloc(allocator) catch |err| {
         std.debug.print("Error getting args: {any}\n", .{err});
         return;
@@ -538,7 +523,8 @@ pub fn main() !void {
         return;
     }
 
-    var chip8 = Chip8.new();
+    // initialize the chip8
+    var chip8 = Chip8.init();
     const rom = fs.cwd().readFileAlloc(allocator, args[1], RAM_SIZE - START_ADDR) catch |err| {
         std.debug.print("Error reading file: {any}\n", .{err});
         return;
@@ -546,6 +532,7 @@ pub fn main() !void {
     defer allocator.free(rom);
     chip8.load(rom);
 
+    // initialize SDL
     if (c.SDL_Init(c.SDL_INIT_VIDEO) != 0) {
         c.SDL_Log("Unable to initialize SDL: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
@@ -559,7 +546,7 @@ pub fn main() !void {
         };
     defer c.SDL_DestroyWindow(screen);
 
-    const renderer = c.SDL_CreateRenderer(screen, -1, 0) orelse {
+    const renderer = c.SDL_CreateRenderer(screen, -1, c.SDL_RENDERER_ACCELERATED | c.SDL_RENDERER_PRESENTVSYNC) orelse {
         c.SDL_Log("Unable to create renderer: %s", c.SDL_GetError());
         return error.SDLInitializationFailed;
     };
@@ -609,6 +596,7 @@ pub fn main() !void {
         }
         chip8.tick_timers();
 
+        _ = c.SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         _ = c.SDL_RenderClear(renderer);
         for (0..SCREEN_HEIGHT) |y| {
             for (0..SCREEN_WIDTH) |x| {
@@ -619,6 +607,6 @@ pub fn main() !void {
         _ = c.SDL_UpdateTexture(texture, null, @ptrCast(pixel_buffer), SCREEN_WIDTH * @sizeOf(u32));
         _ = c.SDL_RenderCopy(renderer, texture, null, null);
         c.SDL_RenderPresent(renderer);
-        c.SDL_Delay(17);
+        c.SDL_Delay(16);
     }
 }
